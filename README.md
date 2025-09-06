@@ -1,0 +1,2 @@
+# PicoMidi
+RaspberrypiPicoをUSB-MIDIにする
