@@ -1,121 +1,136 @@
 #include <string.h>
 #include "NoiseDrum.hpp"
 
-static const uint8_t volumeTable[] =
+const uint8_t NoiseDrum::volumeTable[] =
 {
     0, 10, 12, 16, 20, 25, 32, 40, 51, 64, 80, 101, 128, 161, 203, 255, 255
 };
 
 // Bass Drum
-static const Effect effect000[] =
+const NoiseDrum::Effect NoiseDrum::effect000[] =
 {
     1 * INTERVAL60, 1500 * FREQUENCY_SCALE, 31 * FREQUENCY_SCALE, 54, 15, 0, 0, 127 * FREQUENCY_SCALE, 0, 0,
     8 * INTERVAL60, 1700 * FREQUENCY_SCALE, 1, 62, 16, 1200 * INTERVAL, 0, 127 * FREQUENCY_SCALE, 0, 0,
 };
 
 // Snare Drum
-static const Effect effect001[] =
+const NoiseDrum::Effect NoiseDrum::effect001[] =
 {
     14 * INTERVAL60, 400 * FREQUENCY_SCALE, 7 * FREQUENCY_SCALE, 54, 16, 3000 * INTERVAL, 0, 93 * FREQUENCY_SCALE, 15 * INTERVAL60, 2 * FREQUENCY_SCALE,
 };
 
 // Low Tom
-static const Effect effect002[] =
+const NoiseDrum::Effect NoiseDrum::effect002[] =
 {
     2 * INTERVAL60, 700 * FREQUENCY_SCALE, 1, 54, 15, 0, 0, 100 * FREQUENCY_SCALE, 0, 0,
     14 * INTERVAL60, 900 * FREQUENCY_SCALE, 1, 54, 16, 2500 * INTERVAL, 0, 100 * FREQUENCY_SCALE, 0, 0,
 };
 
 // Middle Tom
-static const Effect effect003[] =
+const NoiseDrum::Effect NoiseDrum::effect003[] =
 {
     2 * INTERVAL60, 500 * FREQUENCY_SCALE, 5 * FREQUENCY_SCALE, 54, 15, 0, 0, 60 * FREQUENCY_SCALE, 0, 0,
     14 * INTERVAL60, 620 * FREQUENCY_SCALE, 1, 54, 16, 2500 * INTERVAL, 0, 60 * FREQUENCY_SCALE, 0, 0,
 };
 
 // High Tom
-static const Effect effect004[] =
+const NoiseDrum::Effect NoiseDrum::effect004[] =
 {
     2 * INTERVAL60, 300 * FREQUENCY_SCALE, 1, 54, 15, 0, 0, 50 * FREQUENCY_SCALE, 0, 0,
     14 * INTERVAL60, 400 * FREQUENCY_SCALE, 1, 54, 16, 2500 * INTERVAL, 0, 50 * FREQUENCY_SCALE, 0, 0,
 };
 
 // Rim Shot
-static const Effect effect005[] =
+const NoiseDrum::Effect NoiseDrum::effect005[] =
 {
     2 * INTERVAL60, 55 * FREQUENCY_SCALE, 1, 62, 16, 300 * INTERVAL, 0, 100 * FREQUENCY_SCALE, 0, 0,
 };
 
 // Snare Drum 2
-static const Effect effect006[] =
+const NoiseDrum::Effect NoiseDrum::effect006[] =
 {
     16 * INTERVAL60, 0, 15 * FREQUENCY_SCALE, 55, 16, 3000 * INTERVAL, 0, 0, 15 * INTERVAL60, 1 * FREQUENCY_SCALE,
 };
 
 // Hi-Hat Close
-static const Effect effect007[] =
+const NoiseDrum::Effect NoiseDrum::effect007[] =
 {
     6 * INTERVAL60, 39 * FREQUENCY_SCALE, 1, 54, 16, 500 * INTERVAL, 0, 0, 0, 0,
 };
 
 // Hi-Hat Open
-static const Effect effect008[] =
+const NoiseDrum::Effect NoiseDrum::effect008[] =
 {
     32 * INTERVAL60, 39 * FREQUENCY_SCALE, 1, 54, 16, 5000 * INTERVAL, 0, 0, 0, 0,
 };
 
 // Crush Cymbal
-static const Effect effect009[] =
+const NoiseDrum::Effect NoiseDrum::effect009[] =
 {
     31 * INTERVAL60, 40 * FREQUENCY_SCALE, 31 * FREQUENCY_SCALE, 54, 16, 5000 * INTERVAL, 0, 0, 15 * INTERVAL60, 1 * FREQUENCY_SCALE,
 };
 
 // Ride Cymbal
-static const Effect effect010[] =
+const NoiseDrum::Effect NoiseDrum::effect010[] =
 {
     31 * INTERVAL60, 30 * FREQUENCY_SCALE, 1, 54, 16, 5000 * INTERVAL, 0, 0, 0, 0,
 };
 
-const EffectData effectDatas[] =
+// 音データテーブル
+const NoiseDrum::EffectData NoiseDrum::effectDatas[] =
 {
-    {sizeof(effect000) / sizeof(Effect), effect000},
-    {sizeof(effect001) / sizeof(Effect), effect001},
-    {sizeof(effect002) / sizeof(Effect), effect002},
-    {sizeof(effect003) / sizeof(Effect), effect003},
-    {sizeof(effect004) / sizeof(Effect), effect004},
-    {sizeof(effect005) / sizeof(Effect), effect005},
-    {sizeof(effect006) / sizeof(Effect), effect006},
-    {sizeof(effect007) / sizeof(Effect), effect007},
-    {sizeof(effect008) / sizeof(Effect), effect008},
-    {sizeof(effect009) / sizeof(Effect), effect009},
-    {sizeof(effect010) / sizeof(Effect), effect010}
+    {sizeof(NoiseDrum::effect000) / sizeof(Effect), NoiseDrum::effect000},
+    {sizeof(NoiseDrum::effect001) / sizeof(Effect), NoiseDrum::effect001},
+    {sizeof(NoiseDrum::effect002) / sizeof(Effect), NoiseDrum::effect002},
+    {sizeof(NoiseDrum::effect003) / sizeof(Effect), NoiseDrum::effect003},
+    {sizeof(NoiseDrum::effect004) / sizeof(Effect), NoiseDrum::effect004},
+    {sizeof(NoiseDrum::effect005) / sizeof(Effect), NoiseDrum::effect005},
+    {sizeof(NoiseDrum::effect006) / sizeof(Effect), NoiseDrum::effect006},
+    {sizeof(NoiseDrum::effect007) / sizeof(Effect), NoiseDrum::effect007},
+    {sizeof(NoiseDrum::effect008) / sizeof(Effect), NoiseDrum::effect008},
+    {sizeof(NoiseDrum::effect009) / sizeof(Effect), NoiseDrum::effect009},
+    {sizeof(NoiseDrum::effect010) / sizeof(Effect), NoiseDrum::effect010}
 };
 
 // 変数
+unsigned short NoiseDrum::rndSeed = 0;
 
 unsigned char NoiseDrum::Rnd(void)
 {
-    unsigned short hl = rndSeed;
+    unsigned short hl = NoiseDrum::rndSeed;
     unsigned short de = hl;
     hl += hl;
     hl += hl;
     hl += de;
     hl += 0x3711;
-    rndSeed = hl;
+    NoiseDrum::rndSeed = hl;
     return hl >> 8;
 }
 
-void NoiseDrum::NoiseDrum(void)
+NoiseDrum::NoiseDrum(void)
+:counter(0)
+,playIndex(0)
+,phase(0)
+,effectData()
+,volume(0)
+,noiseInterval(0)
+,noiseReleaseCounter(0)
+,noiseBeforeData(0)
+,noiseSweepCounter(0)
+,toneIntervalHalf(0)
+,toneInterval(0)
+,toneCounter(0)
+,toneSweepCounter(0)
 {
 }
 
-void NoiseDrum::~NoiseDrum(void)
+NoiseDrum::~NoiseDrum(void)
 {
 }
 
 void NoiseDrum::SetPlay(uint8_t index)
 {
-    this->effectData = &effectDatas[index];
+    this->effectData = &NoiseDrum::effectDatas[index];
     this->playIndex = 0;
     this->phase = 0;
 }
@@ -155,7 +170,7 @@ uint8_t NoiseDrum::GetData(void)
     }
     if(this->phase == 0)
     {
-        NoiseDrumInitializePhase(drum);
+        this->InitializePhase();
     }
     uint8_t data = 0;
     this->noiseReleaseCounter += INTERVAL;
@@ -226,14 +241,14 @@ uint8_t NoiseDrum::GetData(void)
         {
             if(this->noiseReleaseCounter > this->effectData->data[this->playIndex].time)
             {
-                NoiseDrumNextData(drum);
+                this->NextData();
             }
             return volumeTable[this->effectData->data[this->playIndex].volume];
         }
         if(this->noiseReleaseCounter > this->effectData->data[this->playIndex].envelopeFrequency)
         {
             // エンベロープ終了だったら音量0
-            NoiseDrumNextData(drum);
+            this->NextData();
             return 0;
         }
         // 線形補完

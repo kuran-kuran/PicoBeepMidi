@@ -2,7 +2,7 @@
 #include "SquareWave.hpp"
 
 // Volume table
-static const uint16_t psg_volume[] =
+const uint16_t SquareWave::psgVolume[] =
 {
 	0x00, 0x00, 0x17, 0x20, 0x27, 0x30, 0x37, 0x40,
 	0x47, 0x50, 0x57, 0x60, 0x67, 0x70, 0x77, 0x80, 0x87, 0x90, 0x97, 0xa0,
@@ -10,7 +10,7 @@ static const uint16_t psg_volume[] =
 };
 
 // Note毎の周波数の半分の値
-static const uint32_t toneIntervalHalf[] =
+const uint32_t SquareWave::toneIntervalHalf[] =
 {
 	122312, 115447, 108967, 102851, 97079, 91630, 86487, 81633,
 	77051, 72727, 68645, 64792, 61156, 57723, 54483, 51425,
@@ -30,7 +30,21 @@ static const uint32_t toneIntervalHalf[] =
 	119, 112, 106, 100, 94, 89, 84, 79
 };
 
-// Beep
+SquareWave::SquareWave(void)
+:psg_osc_intervalHalf(0)
+,psg_osc_interval(0)
+,psg_osc_counter(0)
+,psg_tone_on(0)
+,psg_midi_inuse(0)
+,psg_midi_inuse_ch(0)
+,psg_midi_note(0)
+{
+}
+
+SquareWave::~SquareWave(void)
+{
+}
+
 void SquareWave::Reset(void)
 {
 	this->psg_osc_intervalHalf = UINT32_MAX;
