@@ -14,6 +14,9 @@
 // GPIO0 UART0 TX
 // GPIO1 UART0 RX
 
+static const int PSG_DEVIDE_FACTOR = 9;
+static const int CHANNEL_COUNT = 20;
+
 // リズムノート変換テーブル
 static const uint8_t Note35_57ChangeTable[] =
 {
@@ -24,60 +27,51 @@ static const uint8_t Note35_57ChangeTable[] =
 
 uint16_t psg_master_volume;
 uint8_t midi_ch_volume[16];
+SquareWave squareWave[CHANNEL_COUNT];
 
-/*
+NoiseDrum noiseDrum;
+
 // タイマ割り込み処理
 void SysTick_Handler(void)
 {
 	uint16_t master_volume;
 	uint8_t tone_output[CHANNEL_COUNT];
-	TIM1->CH4CVR = psg_master_volume;
+	//TIM1->CH4CVR = psg_master_volume;
 // Run Oscillator
 	for(int i = 0; i < CHANNEL_COUNT; i ++)
 	{
-		uint32_t pon_count = beep[i].psg_osc_counter += SAMPLING_INTERVAL;
-		if(pon_count < (beep[i].psg_osc_intervalHalf))
-		{
-			tone_output[i] = beep[i].psg_tone_on;
-		}
-		else if (pon_count > beep[i].psg_osc_interval)
-		{
-			beep[i].psg_osc_counter -= beep[i].psg_osc_interval;
-			tone_output[i] = beep[i].psg_tone_on;
-		}
-		else
-		{
-			tone_output[i] = 0;
-		}
+		tone_output[i] = squareWave[i].GetData();
 	}
 // Mixer
 	master_volume = 0;
 	for(int i = 0; i < CHANNEL_COUNT; i ++)
 	{
-		if(beep[i].psg_tone_on == 1)
+		if(squareWave[i].psg_tone_on == 1)
 		{
 			if(tone_output[i] != 0)
 			{
-				master_volume += psg_volume[midi_ch_volume[beep[i].psg_midi_inuse_ch] * 2 + 1];
+				master_volume += SquareWave::psgVolume[midi_ch_volume[squareWave[i].psg_midi_inuse_ch] * 2 + 1];
 			}
 		}
 	}
-	master_volume += NoiseDrumGetData(&drum);
+	master_volume += noiseDrum.GetData();
 	psg_master_volume = master_volume / PSG_DEVIDE_FACTOR;
 	if(psg_master_volume > 255)
 	{
 		psg_master_volume = 255;
 	}
-	SysTick->SR &= 0;
+	//SysTick->SR &= 0;
 }
-*/
 
 // Core1の処理
 void core1_entry()
 {
-/*
 	uint8_t rxData;
+	uint8_t midicc1;
+	uint8_t midicc2;
 	uint8_t midinote;
+	uint8_t midivel;
+	uint8_t override;
 	while(true)
 	{
 		if(!rb_pop(&rxData))
@@ -92,14 +86,14 @@ void core1_entry()
 		switch(midicmd & 0xF0)
 		{
 		case 0x80: // Note off
-			midinote = ReadByte();
-			midivel = ReadByte();
+			rb_pop(&midinote);
+			rb_pop(&midivel);
 			for(int i = 0; i < CHANNEL_COUNT; ++ i)
 			{
-				if((beep[i].psg_midi_inuse == 1) && (beep[i].psg_midi_inuse_ch == midich) && (beep[i].psg_midi_note == midinote))
+				if((squareWave[i].psg_midi_inuse == 1) && (squareWave[i].psg_midi_inuse_ch == midich) && (squareWave[i].psg_midi_note == midinote))
 				{
-					noteoff(i, midinote);
-					beep[i].psg_midi_inuse = 0;
+					squareWave[i].NoteOff(midinote);
+					squareWave[i].psg_midi_inuse = 0;
 				}
 			}
 			break;
@@ -114,7 +108,7 @@ void core1_entry()
 					override = 0;
 					for(int i = 0; i < CHANNEL_COUNT; ++ i)
 					{
-						if((beep[i].psg_midi_inuse == 1) && (beep[i].psg_midi_inuse_ch == midich) && (beep[i].psg_midi_note == midinote))
+						if((squareWave[i].psg_midi_inuse == 1) && (squareWave[i].psg_midi_inuse_ch == midich) && (squareWave[i].psg_midi_note == midinote))
 						{
 							override=1;
 						}
@@ -123,12 +117,12 @@ void core1_entry()
 					{
 						for(int i = 0; i < CHANNEL_COUNT; ++ i)
 						{
-							if(beep[i].psg_midi_inuse == 0)
+							if(squareWave[i].psg_midi_inuse == 0)
 							{
-								noteon(i, midinote,midi_ch_volume[midich]);
-								beep[i].psg_midi_inuse = 1;
-								beep[i].psg_midi_inuse_ch = midich;
-								beep[i].psg_midi_note = midinote;
+								squareWave[i].NoteOn(midinote,midi_ch_volume[midich]);
+								squareWave[i].psg_midi_inuse = 1;
+								squareWave[i].psg_midi_inuse_ch = midich;
+								squareWave[i].psg_midi_note = midinote;
 								break;
 							}
 						}
@@ -136,10 +130,10 @@ void core1_entry()
 				} else {
 					for(int i = 0; i < CHANNEL_COUNT; ++ i)
 					{
-						if((beep[i].psg_midi_inuse == 1) && (beep[i].psg_midi_inuse_ch == midich) && (beep[i].psg_midi_note == midinote))
+						if((squareWave[i].psg_midi_inuse == 1) && (squareWave[i].psg_midi_inuse_ch == midich) && (squareWave[i].psg_midi_note == midinote))
 						{
-							noteoff(i, midinote);
-							beep[i].psg_midi_inuse = 0;
+							squareWave[i].NoteOff(midinote);
+							squareWave[i].psg_midi_inuse = 0;
 						}
 					}
 				}
@@ -151,7 +145,7 @@ void core1_entry()
 					uint8_t rythmNote = Note35_57ChangeTable[midinote - 35];
 					if(rythmNote < 11)
 					{
-						NoiseDrumSetPlay(&drum, rythmNote);
+						noiseDrum.SetPlay(rythmNote);
 					}
 				}
 			}
@@ -167,7 +161,7 @@ void core1_entry()
 				midi_ch_volume[midich] = (midicc2 >> 3);
 				if(midich == 9)
 				{
-					NoiseDrumSetVolume(&drum, midi_ch_volume[midich]);
+					noiseDrum.SetVolume(midi_ch_volume[midich]);
 				}
 				break;
 
@@ -181,10 +175,10 @@ void core1_entry()
 			case 127:
 				for(int i = 0; i < CHANNEL_COUNT; ++ i)
 				{
-					if((beep[i].psg_midi_inuse == 1) && (beep[i].psg_midi_inuse_ch == midich))
+					if((squareWave[i].psg_midi_inuse == 1) && (squareWave[i].psg_midi_inuse_ch == midich))
 					{
-						noteoff(i, beep[i].psg_midi_note);
-						beep[i].psg_midi_inuse = 0;
+						squareWave[i].NoteOff(squareWave[i].psg_midi_note);
+						squareWave[i].psg_midi_inuse = 0;
 					}
 				}
 				break;
@@ -196,10 +190,10 @@ void core1_entry()
 			// Program change
 			for(int i = 0; i < CHANNEL_COUNT; ++ i)
 			{
-				if((beep[i].psg_midi_inuse == 1) && (beep[i].psg_midi_inuse_ch == midich))
+				if((squareWave[i].psg_midi_inuse == 1) && (squareWave[i].psg_midi_inuse_ch == midich))
 				{
-					noteoff(i, beep[i].psg_midi_note);
-					beep[i].psg_midi_inuse = 0;
+					squareWave[i].NoteOff(squareWave[i].psg_midi_note);
+					squareWave[i].psg_midi_inuse = 0;
 				}
 			}
 			break;
@@ -208,7 +202,6 @@ void core1_entry()
 		}
 		tight_loop_contents();
 	}
-*/
 }
 
 // Core0の処理
@@ -218,7 +211,7 @@ int main()
 	stdio_uart_init();
 
 	// core1設定
-//@@	multicore_launch_core1(core1_entry);
+	multicore_launch_core1(core1_entry);
 
 	// UART初期化
 	uart_init(uart0, 9600);

@@ -13,6 +13,8 @@ pico_sdk_init()
 add_executable(PicoMidi
     ./source/main.cpp
     ./source/usb_descriptors.cpp
+    ./source/SquareWave.cpp
+    ./source/NoiseDrum.cpp
 )
 
 # PIOヘッダー生成用に正しいパスを指定
@@ -20,6 +22,7 @@ add_executable(PicoMidi
 
 target_link_libraries(PicoMidi
     pico_stdlib
+    pico_multicore
     tinyusb_device
     tinyusb_board
 )
