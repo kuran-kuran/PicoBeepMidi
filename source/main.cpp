@@ -45,33 +45,24 @@ void setup_pwm()
 	pwm_set_enabled(slice, true);
 }
 
-uint8_t wave[] = {128, 140, 160, 140, 128, 116, 96, 116}; // 例：1周期
-int wave_len = sizeof(wave) / sizeof(wave[0]);
-int wave_index = 0;
-
-
 // タイマ割り込み処理
 bool timerCallback(repeating_timer *t)
 {
-    uint slice = pwm_gpio_to_slice_num(PWM_PIN);
-    pwm_set_gpio_level(PWM_PIN, wave[wave_index]);
-    wave_index = (wave_index + 1) % wave_len;
-    return true;
-/*
 	uint16_t mix_volume;
 	// Mixer
 	mix_volume = 0;
 	for(int i = 0; i < CHANNEL_COUNT; i ++)
 	{
+		uint8_t wave = squareWave[i].GetData();
 		if(squareWave[i].psg_tone_on == 1)
 		{
-			if(squareWave[i].GetData() != 0)
+			if(wave != 0)
 			{
 				mix_volume += SquareWave::psgVolume[midi_ch_volume[squareWave[i].psg_midi_inuse_ch] * 2 + 1];
 			}
 		}
 	}
-	mix_volume += noiseDrum.GetData();
+//	mix_volume += noiseDrum.GetData();
 	psg_master_volume = mix_volume / PSG_DEVIDE_FACTOR;
 	if(psg_master_volume > 255)
 	{
@@ -79,7 +70,6 @@ bool timerCallback(repeating_timer *t)
 	}
 	pwm_set_gpio_level(PWM_PIN, psg_master_volume);
 	return true;
-*/
 }
 
 void setup_timer()
@@ -126,6 +116,9 @@ void core1_entry()
 		case 0x90: // Note on
 			rb_pop(&midinote);
 			rb_pop(&midivel);
+
+//			printf("midicmd: %02X %02X %02X\n", midicmd, midinote, midivel);
+
 			if(midich != 9)
 			{
 				if(midivel != 0)
@@ -241,106 +234,24 @@ int main()
 
 	// UART初期化
 	uart_init(uart0, 9600);
-	gpio_set_function(0, GPIO_FUNC_UART);  // TX = GP0
-	gpio_set_function(1, GPIO_FUNC_UART);  // RX = GP1
+	gpio_set_function(12, GPIO_FUNC_UART);  // TX = GP0
+	gpio_set_function(13, GPIO_FUNC_UART);  // RX = GP1
+
+	printf("PicoMidi start.\n");
 
 	// USBスタック初期化
 	tusb_init();
-	uint8_t packet[4];
+	uint8_t buffer[64];
 	int phase = 0;
 	while(true)
 	{
 		tud_task();	// USBイベント処理
 		if (tud_midi_available())
 		{
-			tud_midi_stream_read(packet, sizeof(packet));
-			uint8_t cin	= packet[0] & 0x0F;
-			uint8_t status = packet[1];
-			uint8_t data1  = packet[2];
-			uint8_t data2  = packet[3];
-			uint8_t channel = status & 0x0F;
-			uint8_t type	= status & 0xF0;
-//			printf("Raw: %02X %02X %02X %02X | Ch:%02d ", packet[0], packet[1], packet[2], packet[3], channel);
-			// リアルタイムメッセージ処理
-			if (status >= 0xF8 && status <= 0xFF) {
-				rb_push(status);
-				continue;
-			}
-			switch(phase)
+			uint32_t count = tud_midi_stream_read(buffer, sizeof(buffer));
+			for(uint32_t i = 0; i < count; ++ i)
 			{
-			// チャンネルメッセージ処理
-			case 0:
-				if(status >= 0x80 && status <= 0xEF)
-				{
-					// チャンネルメッセージ
-					rb_push(status);
-					rb_push(data1);
-					if(status < 0xC0 || status > 0xDF)
-					{
-						rb_push(data2);
-					}
-				}
-				else if(status == 0xF0)
-				{
-					// SysExメッセージ開始
-					rb_push(status);
-					if(cin == 4)
-					{
-						rb_push(data1);
-						rb_push(data2);
-						if(data2 == 0xF7)
-						{
-							phase = 0;
-						}
-						else
-						{
-							phase = 1;
-						}
-					}
-					else if(cin == 5)
-					{
-						rb_push(data1);
-						if(data1 == 0xF7)
-						{
-							phase = 0;
-						}
-						else
-						{
-							phase = 1;
-						}
-					}
-					else
-					{
-						phase = 1;
-					}
-				}
-				break;
-			// SysExメッセージ処理
-			case 1:
-				if(status == 0xF7)
-				{
-					rb_push(status);
-					phase = 0;
-				}
-				else if(data1 == 0xF7)
-				{
-					rb_push(status);
-					rb_push(data1);
-					phase = 0;
-				}
-				else if(data2 == 0xF7)
-				{
-					rb_push(status);
-					rb_push(data1);
-					rb_push(data2);
-					phase = 0;
-				}
-				else
-				{
-					rb_push(status);
-					rb_push(data1);
-					rb_push(data2);
-				}
+				rb_push(buffer[i]);
 			}
 		}
 	}
