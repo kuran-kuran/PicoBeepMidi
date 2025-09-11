@@ -7,6 +7,9 @@
 class SquareWave
 {
 public:
+	static const int TIME_UNIT = 2000000;
+	static const int OUTPUT_SAMPLING_FREQUENCY = 32000;
+	static const int SAMPLING_INTERVAL = (TIME_UNIT/OUTPUT_SAMPLING_FREQUENCY);
 	SquareWave(void);
 	~SquareWave(void);
 	void Reset(void);
@@ -19,9 +22,6 @@ public:
 	uint8_t psg_midi_note;
 	uint8_t psg_tone_on;
 private:
-	static const int TIME_UNIT = 2000000;
-	static const int OUTPUT_SAMPLING_FREQUENCY = 32000;
-	static const int SAMPLING_INTERVAL = (TIME_UNIT/OUTPUT_SAMPLING_FREQUENCY);
 	static const uint32_t toneIntervalHalf[];
 	uint32_t psg_osc_intervalHalf;
 	uint32_t psg_osc_interval;

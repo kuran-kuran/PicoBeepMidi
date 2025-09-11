@@ -6,6 +6,7 @@
 #include "pico/multicore.h"
 #include "tusb_config.h"
 #include "tusb.h"
+#include "hardware/pwm.h"
 #include "ringbuffer.h"
 #include "SquareWave.hpp"
 #include "NoiseDrum.hpp"
@@ -14,8 +15,10 @@
 // GPIO0 UART0 TX
 // GPIO1 UART0 RX
 
+static const int PWM_PIN = 6;
 static const int PSG_DEVIDE_FACTOR = 9;
 static const int CHANNEL_COUNT = 20;
+constexpr double CLOCK_FREQ = 125000000.0;
 
 // リズムノート変換テーブル
 static const uint8_t Note35_57ChangeTable[] =
@@ -31,36 +34,57 @@ SquareWave squareWave[CHANNEL_COUNT];
 
 NoiseDrum noiseDrum;
 
-// タイマ割り込み処理
-void SysTick_Handler(void)
+repeating_timer timer;
+
+void setup_pwm()
 {
-	uint16_t master_volume;
-	uint8_t tone_output[CHANNEL_COUNT];
-	//TIM1->CH4CVR = psg_master_volume;
-// Run Oscillator
-	for(int i = 0; i < CHANNEL_COUNT; i ++)
-	{
-		tone_output[i] = squareWave[i].GetData();
-	}
-// Mixer
-	master_volume = 0;
+	gpio_set_function(PWM_PIN, GPIO_FUNC_PWM);
+	uint slice = pwm_gpio_to_slice_num(PWM_PIN);
+	pwm_set_wrap(slice, 255); // 8bit resolution
+	pwm_set_clkdiv(slice, CLOCK_FREQ / (SquareWave::OUTPUT_SAMPLING_FREQUENCY * 256.0));
+	pwm_set_enabled(slice, true);
+}
+
+uint8_t wave[] = {128, 140, 160, 140, 128, 116, 96, 116}; // 例：1周期
+int wave_len = sizeof(wave) / sizeof(wave[0]);
+int wave_index = 0;
+
+
+// タイマ割り込み処理
+bool timerCallback(repeating_timer *t)
+{
+    uint slice = pwm_gpio_to_slice_num(PWM_PIN);
+    pwm_set_gpio_level(PWM_PIN, wave[wave_index]);
+    wave_index = (wave_index + 1) % wave_len;
+    return true;
+/*
+	uint16_t mix_volume;
+	// Mixer
+	mix_volume = 0;
 	for(int i = 0; i < CHANNEL_COUNT; i ++)
 	{
 		if(squareWave[i].psg_tone_on == 1)
 		{
-			if(tone_output[i] != 0)
+			if(squareWave[i].GetData() != 0)
 			{
-				master_volume += SquareWave::psgVolume[midi_ch_volume[squareWave[i].psg_midi_inuse_ch] * 2 + 1];
+				mix_volume += SquareWave::psgVolume[midi_ch_volume[squareWave[i].psg_midi_inuse_ch] * 2 + 1];
 			}
 		}
 	}
-	master_volume += noiseDrum.GetData();
-	psg_master_volume = master_volume / PSG_DEVIDE_FACTOR;
+	mix_volume += noiseDrum.GetData();
+	psg_master_volume = mix_volume / PSG_DEVIDE_FACTOR;
 	if(psg_master_volume > 255)
 	{
 		psg_master_volume = 255;
 	}
-	//SysTick->SR &= 0;
+	pwm_set_gpio_level(PWM_PIN, psg_master_volume);
+	return true;
+*/
+}
+
+void setup_timer()
+{
+	add_repeating_timer_us(1000000 / SquareWave::OUTPUT_SAMPLING_FREQUENCY, timerCallback, NULL, &timer);
 }
 
 // Core1の処理
@@ -72,6 +96,8 @@ void core1_entry()
 	uint8_t midinote;
 	uint8_t midivel;
 	uint8_t override;
+	setup_pwm();
+	setup_timer();
 	while(true)
 	{
 		if(!rb_pop(&rxData))

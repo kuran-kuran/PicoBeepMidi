@@ -23,6 +23,7 @@ add_executable(PicoMidi
 target_link_libraries(PicoMidi
     pico_stdlib
     pico_multicore
+    hardware_pwm
     tinyusb_device
     tinyusb_board
 )
