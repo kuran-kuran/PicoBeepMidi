@@ -111,7 +111,7 @@ NoiseDrum::NoiseDrum(void)
 :counter(0)
 ,playIndex(0)
 ,phase(0)
-,effectData()
+,effectData(NULL)
 ,volume(0)
 ,noiseInterval(0)
 ,noiseReleaseCounter(0)
@@ -164,6 +164,10 @@ void NoiseDrum::NextData(void)
 
 uint8_t NoiseDrum::GetData(void)
 {
+    if(this->effectData == NULL)
+    {
+        return 0;
+    }
     if(this->phase == 2)
     {
         return 0;
