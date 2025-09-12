@@ -62,7 +62,7 @@ bool timerCallback(repeating_timer *t)
 			}
 		}
 	}
-//	mix_volume += noiseDrum.GetData();
+	mix_volume += noiseDrum.GetData();
 	psg_master_volume = mix_volume / PSG_DEVIDE_FACTOR;
 	if(psg_master_volume > 255)
 	{
