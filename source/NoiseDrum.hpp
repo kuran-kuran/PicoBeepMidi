@@ -25,6 +25,7 @@ public:
 	    size_t dataCount;
 	    const Effect* data;
 	};
+	static const int EFFECT_COUNT = 11;
 	NoiseDrum(void);
 	~NoiseDrum(void);
 	void SetPlay(uint8_t index);

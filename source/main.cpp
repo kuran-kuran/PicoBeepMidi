@@ -35,6 +35,7 @@ SquareWave squareWave[CHANNEL_COUNT];
 NoiseDrum noiseDrum;
 
 repeating_timer timer;
+bool callbackBusy = false;
 
 void setup_pwm()
 {
@@ -48,6 +49,11 @@ void setup_pwm()
 // タイマ割り込み処理
 bool timerCallback(repeating_timer *t)
 {
+	if(callbackBusy == true)
+	{
+		return true;
+	}
+	callbackBusy = true;
 	uint16_t mix_volume;
 	// Mixer
 	mix_volume = 0;
@@ -69,12 +75,13 @@ bool timerCallback(repeating_timer *t)
 		psg_master_volume = 255;
 	}
 	pwm_set_gpio_level(PWM_PIN, psg_master_volume);
+	callbackBusy = false;
 	return true;
 }
 
 void setup_timer()
 {
-	add_repeating_timer_us(1000000 / SquareWave::OUTPUT_SAMPLING_FREQUENCY, timerCallback, NULL, &timer);
+	add_repeating_timer_us(-1000000 / SquareWave::OUTPUT_SAMPLING_FREQUENCY, timerCallback, NULL, &timer);
 }
 
 // Core1の処理
