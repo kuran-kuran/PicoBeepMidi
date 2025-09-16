@@ -12,12 +12,14 @@
 #include "NoiseDrum.hpp"
 #include <cstdio>
 
-// GPIO0 UART0 TX
-// GPIO1 UART0 RX
+// GPIO-00 UART-0 TX
+// GPIO-01 UART-0 RX
+// GPIO-06 Audio out
 
 static const int PWM_PIN = 6;
 static const int PSG_DEVIDE_FACTOR = 9;
-static const int CHANNEL_COUNT = 20;
+static const int CHANNEL_COUNT = 32;
+static const int NOISE_DRUM_COUNT = 11;
 constexpr double CLOCK_FREQ = 125000000.0;
 
 // リズムノート変換テーブル
@@ -32,7 +34,7 @@ uint16_t psg_master_volume;
 uint8_t midi_ch_volume[16];
 SquareWave squareWave[CHANNEL_COUNT];
 
-NoiseDrum noiseDrum;
+NoiseDrum noiseDrum[NOISE_DRUM_COUNT];
 
 repeating_timer timer;
 bool callbackBusy = false;
@@ -68,7 +70,10 @@ bool timerCallback(repeating_timer *t)
 			}
 		}
 	}
-	mix_volume += noiseDrum.GetData();
+	for(int i = 0; i < NOISE_DRUM_COUNT; ++ i)
+	{
+		mix_volume += noiseDrum[i].GetData();
+	}
 	psg_master_volume = mix_volume / PSG_DEVIDE_FACTOR;
 	if(psg_master_volume > 255)
 	{
@@ -97,6 +102,10 @@ void core1_entry()
 	setup_timer();
 	while(true)
 	{
+		if(rb_count() < 1)
+		{
+			tight_loop_contents();
+		}
 		if(!rb_pop(&rxData))
 		{
 			tight_loop_contents();
@@ -109,6 +118,10 @@ void core1_entry()
 		switch(midicmd & 0xF0)
 		{
 		case 0x80: // Note off
+			while(rb_count() < 2)
+			{
+				tight_loop_contents();
+			}
 			rb_pop(&midinote);
 			rb_pop(&midivel);
 			for(int i = 0; i < CHANNEL_COUNT; ++ i)
@@ -121,6 +134,10 @@ void core1_entry()
 			}
 			break;
 		case 0x90: // Note on
+			while(rb_count() < 2)
+			{
+				tight_loop_contents();
+			}
 			rb_pop(&midinote);
 			rb_pop(&midivel);
 
@@ -171,26 +188,36 @@ void core1_entry()
 					uint8_t rythmNote = Note35_57ChangeTable[midinote - 35];
 					if(rythmNote < 11)
 					{
-						noiseDrum.SetPlay(rythmNote);
+						noiseDrum[rythmNote].SetPlay(rythmNote);
 					}
 				}
 			}
 			break;
 		case 0xB0:
 			// Channel control
+			while(rb_count() < 1)
+			{
+				tight_loop_contents();
+			}
 			rb_pop(&midicc1);
 			switch(midicc1)
 			{
 			case 7:
 			case 11: // Expression
+			while(rb_count() < 1)
+			{
+				tight_loop_contents();
+			}
 				rb_pop(&midicc2);
 				midi_ch_volume[midich] = (midicc2 >> 3);
 				if(midich == 9)
 				{
-					noiseDrum.SetVolume(midi_ch_volume[midich]);
+					for(int i = 0; i < NOISE_DRUM_COUNT; ++ i)
+					{
+						noiseDrum[i].SetVolume(midi_ch_volume[midich]);
+					}
 				}
 				break;
-
 			case 0: //Bank select
 			case 120:// All note off
 			case 121:// All reset
@@ -253,7 +280,7 @@ int main()
 	while(true)
 	{
 		tud_task();	// USBイベント処理
-		if (tud_midi_available())
+		if(tud_midi_available())
 		{
 			uint32_t count = tud_midi_stream_read(buffer, sizeof(buffer));
 			for(uint32_t i = 0; i < count; ++ i)

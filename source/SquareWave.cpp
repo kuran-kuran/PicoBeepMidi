@@ -76,7 +76,7 @@ uint8_t SquareWave::GetData(void)
 	{
 		return this->psg_tone_on;
 	}
-	else if (pon_count > this->psg_osc_interval)
+	else if(pon_count > this->psg_osc_interval)
 	{
 		this->psg_osc_counter -= this->psg_osc_interval;
 		return this->psg_tone_on;

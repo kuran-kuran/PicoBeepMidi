@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include "pico/stdlib.h"
 
-#define BUF_SIZE 256			// 2のべき乗
+#define BUF_SIZE 64				// 2のべき乗
 #define BUF_MASK (BUF_SIZE - 1)	// &マスクに使う
 
 static volatile uint8_t ringbuf[BUF_SIZE];
@@ -42,6 +42,12 @@ static inline bool rb_pop(uint8_t *out)
 	*out = ringbuf[tail];
 	tail = (tail + 1) & BUF_MASK;
 	return true;
+}
+
+// 現在のバッファ内のデータ数を取得
+static inline uint16_t rb_count(void)
+{
+	return (head - tail) & BUF_MASK;
 }
 
 #endif

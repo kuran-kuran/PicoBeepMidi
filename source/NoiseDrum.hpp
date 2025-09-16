@@ -9,21 +9,21 @@ class NoiseDrum
 public:
 	struct Effect
 	{
-	    uint32_t time;
-	    uint16_t toneFrequency;
-	    uint16_t noiseFrequency;
-	    uint8_t mixControl;
-	    uint8_t volume;
-	    uint32_t envelopeFrequency;
-	    uint8_t envelopePattern;
-	    uint16_t toneSweep;
-	    uint32_t noiseSweepCount;
-	    uint16_t noiseSweepData;
+		uint32_t time;
+		uint16_t toneFrequency;
+		uint16_t noiseFrequency;
+		uint8_t mixControl;
+		uint8_t volume;
+		uint32_t envelopeFrequency;
+		uint8_t envelopePattern;
+		uint16_t toneSweep;
+		uint32_t noiseSweepCount;
+		uint16_t noiseSweepData;
 	};
 	struct EffectData
 	{
-	    size_t dataCount;
-	    const Effect* data;
+		size_t dataCount;
+		const Effect* data;
 	};
 	static const int EFFECT_COUNT = 11;
 	NoiseDrum(void);
@@ -58,8 +58,10 @@ private:
 	void NextData(void);
 	uint32_t counter;
 	uint8_t playIndex;
-	uint8_t phase;
 	const EffectData* effectData;
+	uint8_t nextPlayIndex;
+	const EffectData* nextEffectData;
+	uint8_t phase;
 	uint8_t volume;
 	// Noise
 	uint32_t noiseInterval;
