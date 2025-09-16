@@ -288,5 +288,6 @@ int main()
 				rb_push(buffer[i]);
 			}
 		}
+		tight_loop_contents();
 	}
 }
