@@ -31,7 +31,9 @@ static const uint8_t Note35_57ChangeTable[] =
 };
 
 uint16_t psg_master_volume;
-uint8_t midi_ch_volume[16];
+uint8_t midi_ch_volume[16] = {
+	31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31
+};
 SquareWave squareWave[CHANNEL_COUNT];
 
 NoiseDrum noiseDrum[NOISE_DRUM_COUNT];
@@ -56,9 +58,8 @@ bool timerCallback(repeating_timer *t)
 		return true;
 	}
 	callbackBusy = true;
-	uint16_t mix_volume;
 	// Mixer
-	mix_volume = 0;
+	uint16_t mix_volume = 0;
 	for(int i = 0; i < CHANNEL_COUNT; i ++)
 	{
 		uint8_t wave = squareWave[i].GetData();
@@ -66,7 +67,8 @@ bool timerCallback(repeating_timer *t)
 		{
 			if(wave != 0)
 			{
-				mix_volume += SquareWave::psgVolume[midi_ch_volume[squareWave[i].psg_midi_inuse_ch] * 2 + 1];
+				uint16_t volume = (SquareWave::psgVolume[squareWave[i].psg_tone_volume] + SquareWave::psgVolume[midi_ch_volume[squareWave[i].psg_midi_inuse_ch]]) / 2;
+				mix_volume += volume;
 			}
 		}
 	}
@@ -124,6 +126,7 @@ void core1_entry()
 			}
 			rb_pop(&midinote);
 			rb_pop(&midivel);
+//			printf("midicmd: (%d) %02X %02X %02X\n", midich, midicmd, midinote, midivel);
 			for(int i = 0; i < CHANNEL_COUNT; ++ i)
 			{
 				if((squareWave[i].psg_midi_inuse == 1) && (squareWave[i].psg_midi_inuse_ch == midich) && (squareWave[i].psg_midi_note == midinote))
@@ -140,9 +143,7 @@ void core1_entry()
 			}
 			rb_pop(&midinote);
 			rb_pop(&midivel);
-
-//			printf("midicmd: %02X %02X %02X\n", midicmd, midinote, midivel);
-
+//			printf("midicmd: (%d) %02X %02X %02X v(%d)\n", midich, midicmd, midinote, midivel, midi_ch_volume[midich]);
 			if(midich != 9)
 			{
 				if(midivel != 0)
@@ -153,7 +154,7 @@ void core1_entry()
 					{
 						if((squareWave[i].psg_midi_inuse == 1) && (squareWave[i].psg_midi_inuse_ch == midich) && (squareWave[i].psg_midi_note == midinote))
 						{
-							override=1;
+							override = 1;
 						}
 					}
 					if(override == 0)
@@ -162,7 +163,7 @@ void core1_entry()
 						{
 							if(squareWave[i].psg_midi_inuse == 0)
 							{
-								squareWave[i].NoteOn(midinote,midi_ch_volume[midich]);
+								squareWave[i].NoteOn(midinote, midivel >> 2);
 								squareWave[i].psg_midi_inuse = 1;
 								squareWave[i].psg_midi_inuse_ch = midich;
 								squareWave[i].psg_midi_note = midinote;
@@ -170,7 +171,9 @@ void core1_entry()
 							}
 						}
 					}
-				} else {
+				}
+				else
+				{
 					for(int i = 0; i < CHANNEL_COUNT; ++ i)
 					{
 						if((squareWave[i].psg_midi_inuse == 1) && (squareWave[i].psg_midi_inuse_ch == midich) && (squareWave[i].psg_midi_note == midinote))
@@ -200,21 +203,23 @@ void core1_entry()
 				tight_loop_contents();
 			}
 			rb_pop(&midicc1);
+//			printf("midicmd: (%d) %02X %02X\n", midich, midicmd, midicc1);
 			switch(midicc1)
 			{
 			case 7:
 			case 11: // Expression
-			while(rb_count() < 1)
-			{
-				tight_loop_contents();
-			}
+				while(rb_count() < 1)
+				{
+					tight_loop_contents();
+				}
 				rb_pop(&midicc2);
-				midi_ch_volume[midich] = (midicc2 >> 3);
+//				printf("*midicmd: (%d) %02X %02X %02X\n", midich, midicmd, midicc1, midicc2);
+				midi_ch_volume[midich] = (midicc2 >> 2);
 				if(midich == 9)
 				{
 					for(int i = 0; i < NOISE_DRUM_COUNT; ++ i)
 					{
-						noiseDrum[i].SetVolume(midi_ch_volume[midich]);
+						noiseDrum[i].SetVolume(midi_ch_volume[midich] >> 1);
 					}
 				}
 				break;
@@ -241,6 +246,7 @@ void core1_entry()
 			break;
 		case 0xC0:
 			// Program change
+//			printf("Program change: (%d) %02X\n", midich, midicc2);
 			for(int i = 0; i < CHANNEL_COUNT; ++ i)
 			{
 				if((squareWave[i].psg_midi_inuse == 1) && (squareWave[i].psg_midi_inuse_ch == midich))

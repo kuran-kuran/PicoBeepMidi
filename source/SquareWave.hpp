@@ -21,6 +21,7 @@ public:
 	uint8_t psg_midi_inuse_ch;
 	uint8_t psg_midi_note;
 	uint8_t psg_tone_on;
+	uint8_t psg_tone_volume;
 private:
 	static const uint32_t toneIntervalHalf[];
 	uint32_t psg_osc_intervalHalf;

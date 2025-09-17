@@ -31,10 +31,11 @@ const uint32_t SquareWave::toneIntervalHalf[] =
 };
 
 SquareWave::SquareWave(void)
-:psg_osc_intervalHalf(0)
-,psg_osc_interval(0)
+:psg_osc_intervalHalf(UINT32_MAX)
+,psg_osc_interval(UINT32_MAX)
 ,psg_osc_counter(0)
 ,psg_tone_on(0)
+,psg_tone_volume(0)
 ,psg_midi_inuse(0)
 ,psg_midi_inuse_ch(0)
 ,psg_midi_note(0)
@@ -51,7 +52,7 @@ void SquareWave::Reset(void)
 	this->psg_osc_interval = UINT32_MAX;
 	this->psg_osc_counter = 0;
 	this->psg_tone_on = 0;
-	this->psg_midi_inuse=0;
+	this->psg_midi_inuse = 0;
 }
 
 void SquareWave::NoteOn(uint8_t note, uint8_t volume)
@@ -60,6 +61,7 @@ void SquareWave::NoteOn(uint8_t note, uint8_t volume)
 	this->psg_osc_interval = toneIntervalHalf[note] << 1;
 	this->psg_osc_counter = 0;
 	this->psg_tone_on = 1;
+	this->psg_tone_volume = volume;
 }
 
 void SquareWave::NoteOff(uint8_t note)
