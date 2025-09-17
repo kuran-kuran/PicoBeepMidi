@@ -28,7 +28,7 @@ public:
 	static const int EFFECT_COUNT = 11;
 	NoiseDrum(void);
 	~NoiseDrum(void);
-	void SetPlay(uint8_t index);
+	void SetPlay(uint8_t index, uint8_t volume);
 	void SetVolume(uint8_t volume);
 	uint8_t GetData(void);
 private:
@@ -63,6 +63,7 @@ private:
 	const EffectData* nextEffectData;
 	uint8_t phase;
 	uint8_t volume;
+	uint8_t masterVolume;
 	// Noise
 	uint32_t noiseInterval;
 	uint32_t noiseReleaseCounter;

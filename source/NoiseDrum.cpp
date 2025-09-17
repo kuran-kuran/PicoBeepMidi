@@ -115,6 +115,7 @@ NoiseDrum::NoiseDrum(void)
 ,nextEffectData(NULL)
 ,phase(2)
 ,volume(0)
+,masterVolume(0)
 ,noiseInterval(0)
 ,noiseReleaseCounter(0)
 ,noiseBeforeData(0)
@@ -130,16 +131,17 @@ NoiseDrum::~NoiseDrum(void)
 {
 }
 
-void NoiseDrum::SetPlay(uint8_t index)
+void NoiseDrum::SetPlay(uint8_t index, uint8_t volume)
 {
 	this->nextEffectData = &NoiseDrum::effectDatas[index];
 	this->nextPlayIndex = 0;
+	this->volume = volume;
 	this->phase = 3;
 }
 
 void NoiseDrum::SetVolume(uint8_t volume)
 {
-	this->volume = volume;
+	this->masterVolume = volume;
 }
 
 void NoiseDrum::InitializePhase(void)
@@ -265,7 +267,7 @@ uint8_t NoiseDrum::GetData(void)
 		}
 		// üŒ`•âŠ®
 		uint8_t volume = this->effectData->data[this->playIndex].volume - this->effectData->data[this->playIndex].volume * this->noiseReleaseCounter / this->effectData->data[this->playIndex].envelopeFrequency;
-		volume = volume * this->volume / 16;
+		volume = volume * this->volume * this->masterVolume / 256;
 		volume = volumeTable[volume];
 		return volume;
 	}

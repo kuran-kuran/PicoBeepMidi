@@ -191,7 +191,7 @@ void core1_entry()
 					uint8_t rythmNote = Note35_57ChangeTable[midinote - 35];
 					if(rythmNote < 11)
 					{
-						noiseDrum[rythmNote].SetPlay(rythmNote);
+						noiseDrum[rythmNote].SetPlay(rythmNote, midivel >> 3);
 					}
 				}
 			}
