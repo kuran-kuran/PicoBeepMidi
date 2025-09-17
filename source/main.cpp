@@ -67,7 +67,7 @@ bool timerCallback(repeating_timer *t)
 		{
 			if(wave != 0)
 			{
-				uint16_t volume = (SquareWave::psgVolume[squareWave[i].psg_tone_volume] + SquareWave::psgVolume[midi_ch_volume[squareWave[i].psg_midi_inuse_ch]]) / 2;
+				uint16_t volume = SquareWave::psgVolume[squareWave[i].psg_tone_volume * midi_ch_volume[squareWave[i].psg_midi_inuse_ch] / 31];
 				mix_volume += volume;
 			}
 		}
