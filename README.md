@@ -2,9 +2,9 @@
 RaspberrypiPicoをUSB-MIDIまたはUART接続してMIDIをBEEPで演奏する  
 
 ## 端子
-GPIO 0 : UART TX
-GPIO 1 : UART RX
-GPIO 6 : Audio
+GPIO 0 : UART TX  
+GPIO 1 : UART RX  
+GPIO 6 : Audio  
 
 ## 使い方
 Windowsの場合はUSBで接続するとMIDIとして認識します。USB接続の場合はVSYSピンの接続は必要ありません。  
