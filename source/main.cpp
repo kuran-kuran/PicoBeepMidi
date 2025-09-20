@@ -273,11 +273,11 @@ int main()
 	multicore_launch_core1(core1_entry);
 
 	// UART初期化
-	uart_init(uart0, 9600);
-	gpio_set_function(12, GPIO_FUNC_UART);  // TX = GP0
-	gpio_set_function(13, GPIO_FUNC_UART);  // RX = GP1
+	uart_init(uart0, 31250); // MIDI: 31250, PC:38400
+	gpio_set_function(12, GPIO_FUNC_UART);  // TX = GP12
+	gpio_set_function(13, GPIO_FUNC_UART);  // RX = GP13
 
-	printf("PicoMidi start.\n");
+//	printf("PicoMidi start.\n");
 
 	// USBスタック初期化
 	tusb_init();
@@ -285,7 +285,9 @@ int main()
 	int phase = 0;
 	while(true)
 	{
-		tud_task();	// USBイベント処理
+		// USBイベント処理
+		tud_task();
+		// USB MIDI受信
 		if(tud_midi_available())
 		{
 			uint32_t count = tud_midi_stream_read(buffer, sizeof(buffer));
@@ -293,6 +295,13 @@ int main()
 			{
 				rb_push(buffer[i]);
 			}
+		}
+		// UART受信
+		while(uart_is_readable(uart0))
+		{
+			uint8_t rxData = uart_getc(uart0);
+			// FIFO内の全データをここで処理
+			rb_push(rxData);
 		}
 		tight_loop_contents();
 	}
