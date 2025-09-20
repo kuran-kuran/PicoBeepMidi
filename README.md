@@ -1,5 +1,5 @@
-# PicoMidi
-RaspberrypiPicoをUSB-MIDIにする  
+# PicoBeepMidi
+RaspberrypiPicoをUSB-MIDIまたはUART接続してMIDIをBEEPで演奏する  
 
 ## Windowsでのビルド
 `>` md build  
