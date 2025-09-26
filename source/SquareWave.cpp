@@ -31,14 +31,14 @@ const uint32_t SquareWave::toneIntervalHalf[] =
 };
 
 SquareWave::SquareWave(void)
-:psg_osc_intervalHalf(UINT32_MAX)
-,psg_osc_interval(UINT32_MAX)
-,psg_osc_counter(0)
-,psg_tone_on(0)
-,psg_tone_volume(0)
-,psg_midi_inuse(0)
-,psg_midi_inuse_ch(0)
-,psg_midi_note(0)
+:oscIntervalHalf(UINT32_MAX)
+,oscInterval(UINT32_MAX)
+,oscCounter(0)
+,toneOn(0)
+,toneVolume(0)
+,midiInUse(false)
+,midiChannel(0)
+,midiNote(0)
 {
 }
 
@@ -48,40 +48,43 @@ SquareWave::~SquareWave(void)
 
 void SquareWave::Reset(void)
 {
-	this->psg_osc_intervalHalf = UINT32_MAX;
-	this->psg_osc_interval = UINT32_MAX;
-	this->psg_osc_counter = 0;
-	this->psg_tone_on = 0;
-	this->psg_midi_inuse = 0;
+	this->oscIntervalHalf = UINT32_MAX;
+	this->oscInterval = UINT32_MAX;
+	this->oscCounter = 0;
+	this->toneOn = 0;
+	this->midiInUse = false;
 }
 
 void SquareWave::NoteOn(uint8_t note, uint8_t volume)
 {
-	this->psg_osc_intervalHalf = toneIntervalHalf[note];
-	this->psg_osc_interval = toneIntervalHalf[note] << 1;
-	this->psg_osc_counter = 0;
-	this->psg_tone_on = 1;
-	this->psg_tone_volume = volume;
+	this->oscIntervalHalf = toneIntervalHalf[note];
+	this->oscInterval = toneIntervalHalf[note] << 1;
+	this->oscCounter = 0;
+	this->toneOn = 1;
+	this->toneVolume = volume;
+	this->midiNote = note;
+	this->midiInUse = true;
 }
 
-void SquareWave::NoteOff(uint8_t note)
+void SquareWave::NoteOff(void)
 {
-	this->psg_osc_intervalHalf = UINT32_MAX;
-	this->psg_osc_interval = UINT32_MAX;
-	this->psg_tone_on = 0;
+	this->oscIntervalHalf = UINT32_MAX;
+	this->oscInterval = UINT32_MAX;
+	this->toneOn = 0;
+	this->midiInUse = false;
 }
 
 uint8_t SquareWave::GetData(void)
 {
-	uint32_t pon_count = this->psg_osc_counter += SAMPLING_INTERVAL;
-	if(pon_count < (this->psg_osc_intervalHalf))
+	uint32_t pon_count = this->oscCounter += SAMPLING_INTERVAL;
+	if(pon_count < (this->oscIntervalHalf))
 	{
-		return this->psg_tone_on;
+		return this->toneOn;
 	}
-	else if(pon_count > this->psg_osc_interval)
+	else if(pon_count > this->oscInterval)
 	{
-		this->psg_osc_counter -= this->psg_osc_interval;
-		return this->psg_tone_on;
+		this->oscCounter -= this->oscInterval;
+		return this->toneOn;
 	}
 	else
 	{

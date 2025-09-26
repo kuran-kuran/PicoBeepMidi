@@ -30,7 +30,7 @@ static const uint8_t Note35_57ChangeTable[] =
 	10, 255, 255, 255, 255, 255, 9
 };
 
-uint16_t psg_master_volume;
+uint16_t masterVolume;
 uint8_t midi_ch_volume[16] = {
 	31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31
 };
@@ -63,11 +63,11 @@ bool timerCallback(repeating_timer *t)
 	for(int i = 0; i < CHANNEL_COUNT; i ++)
 	{
 		uint8_t wave = squareWave[i].GetData();
-		if(squareWave[i].psg_tone_on == 1)
+		if(squareWave[i].GetToneOn() == 1)
 		{
 			if(wave != 0)
 			{
-				uint16_t volume = SquareWave::psgVolume[squareWave[i].psg_tone_volume * midi_ch_volume[squareWave[i].psg_midi_inuse_ch] / 31];
+				uint16_t volume = SquareWave::getVolume(squareWave[i].GetToneVolume() * midi_ch_volume[squareWave[i].GetChannel()] / 31);
 				mix_volume += volume;
 			}
 		}
@@ -76,12 +76,12 @@ bool timerCallback(repeating_timer *t)
 	{
 		mix_volume += noiseDrum[i].GetData();
 	}
-	psg_master_volume = mix_volume / PSG_DEVIDE_FACTOR;
-	if(psg_master_volume > 255)
+	masterVolume = mix_volume / PSG_DEVIDE_FACTOR;
+	if(masterVolume > 255)
 	{
-		psg_master_volume = 255;
+		masterVolume = 255;
 	}
-	pwm_set_gpio_level(PWM_PIN, psg_master_volume);
+	pwm_set_gpio_level(PWM_PIN, masterVolume);
 	callbackBusy = false;
 	return true;
 }
@@ -129,10 +129,9 @@ void core1_entry()
 //			printf("midicmd: (%d) %02X %02X %02X\n", midich, midicmd, midinote, midivel);
 			for(int i = 0; i < CHANNEL_COUNT; ++ i)
 			{
-				if((squareWave[i].psg_midi_inuse == 1) && (squareWave[i].psg_midi_inuse_ch == midich) && (squareWave[i].psg_midi_note == midinote))
+				if(squareWave[i].IsInUse() && (squareWave[i].GetChannel() == midich) && (squareWave[i].GetNote() == midinote))
 				{
-					squareWave[i].NoteOff(midinote);
-					squareWave[i].psg_midi_inuse = 0;
+					squareWave[i].NoteOff();
 				}
 			}
 			break;
@@ -152,7 +151,7 @@ void core1_entry()
 					override = 0;
 					for(int i = 0; i < CHANNEL_COUNT; ++ i)
 					{
-						if((squareWave[i].psg_midi_inuse == 1) && (squareWave[i].psg_midi_inuse_ch == midich) && (squareWave[i].psg_midi_note == midinote))
+						if(squareWave[i].IsInUse() && (squareWave[i].GetChannel() == midich) && (squareWave[i].GetNote() == midinote))
 						{
 							override = 1;
 						}
@@ -161,12 +160,10 @@ void core1_entry()
 					{
 						for(int i = 0; i < CHANNEL_COUNT; ++ i)
 						{
-							if(squareWave[i].psg_midi_inuse == 0)
+							if(!squareWave[i].IsInUse())
 							{
 								squareWave[i].NoteOn(midinote, midivel >> 2);
-								squareWave[i].psg_midi_inuse = 1;
-								squareWave[i].psg_midi_inuse_ch = midich;
-								squareWave[i].psg_midi_note = midinote;
+								squareWave[i].SetChannel(midich);
 								break;
 							}
 						}
@@ -176,10 +173,9 @@ void core1_entry()
 				{
 					for(int i = 0; i < CHANNEL_COUNT; ++ i)
 					{
-						if((squareWave[i].psg_midi_inuse == 1) && (squareWave[i].psg_midi_inuse_ch == midich) && (squareWave[i].psg_midi_note == midinote))
+						if(squareWave[i].IsInUse() && (squareWave[i].GetChannel() == midich) && (squareWave[i].GetNote() == midinote))
 						{
-							squareWave[i].NoteOff(midinote);
-							squareWave[i].psg_midi_inuse = 0;
+							squareWave[i].NoteOff();
 						}
 					}
 				}
@@ -233,10 +229,9 @@ void core1_entry()
 			case 127:
 				for(int i = 0; i < CHANNEL_COUNT; ++ i)
 				{
-					if((squareWave[i].psg_midi_inuse == 1) && (squareWave[i].psg_midi_inuse_ch == midich))
+					if(squareWave[i].IsInUse() && (squareWave[i].GetChannel() == midich))
 					{
-						squareWave[i].NoteOff(squareWave[i].psg_midi_note);
-						squareWave[i].psg_midi_inuse = 0;
+						squareWave[i].NoteOff();
 					}
 				}
 				break;
@@ -249,10 +244,9 @@ void core1_entry()
 //			printf("Program change: (%d) %02X\n", midich, midicc2);
 			for(int i = 0; i < CHANNEL_COUNT; ++ i)
 			{
-				if((squareWave[i].psg_midi_inuse == 1) && (squareWave[i].psg_midi_inuse_ch == midich))
+				if(squareWave[i].IsInUse() && (squareWave[i].GetChannel() == midich))
 				{
-					squareWave[i].NoteOff(squareWave[i].psg_midi_note);
-					squareWave[i].psg_midi_inuse = 0;
+					squareWave[i].NoteOff();
 				}
 			}
 			break;
