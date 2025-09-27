@@ -74,17 +74,18 @@ void SquareWave::NoteOff(void)
 	this->midiInUse = false;
 }
 
-uint8_t SquareWave::GetData(void)
+uint8_t SquareWave::GetData(uint32_t volume)
 {
 	uint32_t pon_count = this->oscCounter += SAMPLING_INTERVAL;
+	uint8_t oscVolume = this->toneOn * static_cast<uint8_t>((this->toneVolume * volume) >> 8);
 	if(pon_count < (this->oscIntervalHalf))
 	{
-		return this->toneOn;
+		return oscVolume;
 	}
 	else if(pon_count > this->oscInterval)
 	{
 		this->oscCounter -= this->oscInterval;
-		return this->toneOn;
+		return oscVolume;
 	}
 	else
 	{

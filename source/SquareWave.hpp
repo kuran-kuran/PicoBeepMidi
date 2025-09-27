@@ -14,7 +14,7 @@ public:
 	void Reset(void);
 	void NoteOn(uint8_t note, uint8_t volume);
 	void NoteOff(void);
-	uint8_t GetData(void);
+	uint8_t GetData(uint32_t volume);
 	inline uint8_t GetNote(void)
 	{
 		return this->midiNote;

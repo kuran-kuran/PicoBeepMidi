@@ -31,15 +31,18 @@ static const uint8_t Note35_57ChangeTable[] =
 };
 
 uint16_t masterVolume;
-uint8_t midi_ch_volume[16] = {
-	31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31
+uint8_t midiChannelVolume[16] = {
+	254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254
+};
+uint8_t midiChannelExpression[16] = {
+	254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254
 };
 SquareWave squareWave[CHANNEL_COUNT];
 
 NoiseDrum noiseDrum[NOISE_DRUM_COUNT];
 
 repeating_timer timer;
-bool callbackBusy = false;
+volatile bool callbackBusy = false;
 
 void setup_pwm()
 {
@@ -62,15 +65,8 @@ bool timerCallback(repeating_timer *t)
 	uint16_t mix_volume = 0;
 	for(int i = 0; i < CHANNEL_COUNT; i ++)
 	{
-		uint8_t wave = squareWave[i].GetData();
-		if(squareWave[i].GetToneOn() == 1)
-		{
-			if(wave != 0)
-			{
-				uint16_t volume = SquareWave::getVolume(squareWave[i].GetToneVolume() * midi_ch_volume[squareWave[i].GetChannel()] / 31);
-				mix_volume += volume;
-			}
-		}
+		int channel = squareWave[i].GetChannel();
+		mix_volume += squareWave[i].GetData(static_cast<int32_t>(midiChannelVolume[channel] * midiChannelExpression[channel] >> 8));
 	}
 	for(int i = 0; i < NOISE_DRUM_COUNT; ++ i)
 	{
@@ -142,7 +138,7 @@ void core1_entry()
 			}
 			rb_pop(&midinote);
 			rb_pop(&midivel);
-//			printf("midicmd: (%d) %02X %02X %02X v(%d)\n", midich, midicmd, midinote, midivel, midi_ch_volume[midich]);
+//			printf("midicmd: (%d) %02X %02X %02X v(%d)\n", midich, midicmd, midinote, midivel, midiChannelVolume[midich]);
 			if(midich != 9)
 			{
 				if(midivel != 0)
@@ -162,7 +158,7 @@ void core1_entry()
 						{
 							if(!squareWave[i].IsInUse())
 							{
-								squareWave[i].NoteOn(midinote, midivel >> 2);
+								squareWave[i].NoteOn(midinote, midivel << 1);
 								squareWave[i].SetChannel(midich);
 								break;
 							}
@@ -202,7 +198,7 @@ void core1_entry()
 //			printf("midicmd: (%d) %02X %02X\n", midich, midicmd, midicc1);
 			switch(midicc1)
 			{
-			case 7:
+			case 7:  // Volume
 			case 11: // Expression
 				while(rb_count() < 1)
 				{
@@ -210,12 +206,20 @@ void core1_entry()
 				}
 				rb_pop(&midicc2);
 //				printf("*midicmd: (%d) %02X %02X %02X\n", midich, midicmd, midicc1, midicc2);
-				midi_ch_volume[midich] = (midicc2 >> 2);
+				if(midicc1 == 7)
+				{
+					midiChannelVolume[midich] = midicc2 << 1; // (0～254)
+				}
+				else
+				{
+					midiChannelExpression[midich] = midicc2 << 1; // (0～254)
+				}
 				if(midich == 9)
 				{
 					for(int i = 0; i < NOISE_DRUM_COUNT; ++ i)
 					{
-						noiseDrum[i].SetVolume(midi_ch_volume[midich] >> 1);
+						uint8_t setVolume = static_cast<uint8_t>((midiChannelVolume[midich] * midiChannelExpression[midich]) >> 12);
+						noiseDrum[i].SetVolume(setVolume);
 					}
 				}
 				break;
