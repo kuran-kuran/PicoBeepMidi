@@ -14,6 +14,7 @@ add_executable(PicoBeepMidi
     ./source/main.cpp
     ./source/usb_descriptors.cpp
     ./source/SquareWave.cpp
+    ./source/SinWave.cpp
     ./source/NoiseDrum.cpp
 )
 

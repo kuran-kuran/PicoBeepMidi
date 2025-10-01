@@ -9,6 +9,7 @@
 #include "hardware/pwm.h"
 #include "ringbuffer.h"
 #include "SquareWave.hpp"
+#include "SinWave.hpp"
 #include "NoiseDrum.hpp"
 #include <cstdio>
 
