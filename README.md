@@ -31,7 +31,7 @@ BEEPモードすべてのチャンネルの音色がBEEP音になりドラムは
 RaspberryPiPicoとRP2040Zeroに対応しています。  
 `>` md build  
 `>` cd build  
-`>` vcvars64  
+`>` vcvars64 (Windowsのみ)  
 を実行後  
 | 環境・基板 | コマンド |
 | --- | --- |
@@ -39,6 +39,7 @@ RaspberryPiPicoとRP2040Zeroに対応しています。
 | Linux・Zero | `cmake .. -DPICO_BOARD=waveshare_rp2040_zero` |
 | Windows・Pico | `cmake .. -G "NMake Makefiles" -DPICO_BOARD=pico` |
 | Windows・Zero | `cmake .. -G "NMake Makefiles" -DPICO_BOARD=waveshare_rp2040_zero` |
+その後Linuxではmake、Windowsではnmakeするとビルドされます  
 
 ## 注意
 音声出力はモノラル出力です。  
