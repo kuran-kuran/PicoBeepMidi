@@ -1,10 +1,16 @@
 # PicoBeepMidi
-RaspberrypiPicoをUSB-MIDIまたはUART接続してMIDIをBEEPで演奏する  
+RaspberrypiPicoまたはRP2040ZeroをUSB-MIDI、UART接続してMIDIをBEEPで演奏します。  
+250MHzで動作しています。250MHzは公式認定範囲外の設定です。  
+UARTは31250bps、RXはGPIO1、TXはGPIO0、音声PWMはGPIO6です。  
+GMモードとBEEPモードがあります。  
+GMモードは音色がGM風になります。  
+BEEPモードは音色がBEEP音になります。ドラムはPSG風になります。  
 
 ## 端子
-GPIO 0 : UART TX  
-GPIO 1 : UART RX  
-GPIO 6 : Audio  
+GPIO0 : UART TX  
+GPIO1 : UART RX  
+GPIO6 : Audio  
+UARTでの接続の場合は5Vの電源が必要です  
 
 ## 使い方
 Windowsの場合はUSBで接続するとMIDIとして認識します。USB接続の場合はVSYSピンの接続は必要ありません。  
@@ -14,27 +20,27 @@ USBとUARTは同時に接続することはできません。
 どちらか1系統の接続だけしてください。  
 音声出力はGPIO 6になっています。モノラルです。
 ローパスフィルタとか必要かもしれませんが私はイヤホン端子をGNDとGPIO 6に直接繋げています。これで今のところ音は鳴っています。  
+GMモードではPaspberryPiPicoの場合はLEDが明るく点灯します。RP2040Zeroの場合は緑色に点灯します。  
+BEEPモードではPaspberryPiPicoの場合はLEDが暗く点灯します。RP2040Zeroの場合は赤色に点灯します。  
+BOOTボタンを押すとモードの切り替えができます。モードの切り替えは演奏中も行う事ができます。  
+GMモードで音色にクラビネットを指定すると音色がCMU-800になります。  
+その場合MIDIチャンネル2だけ特別にCMU-800のBASSの音色になります。  
+BEEPモードすべてのチャンネルの音色がBEEP音になりドラムはPSG風になります。  
 
-## Windowsでのビルド
+## ビルド方法
+RaspberryPiPicoとRP2040Zeroに対応しています。  
 `>` md build  
 `>` cd build  
 `>` vcvars64  
-`>` cmake .. -G "NMake Makefiles"  
-または (Pythonのパスを指定する時)  
-`>` cmake .. -G "NMake Makefiles" -DPython3_EXECUTABLE=D:\Apps\python3\python3.exe  
-をしてから  
-`>` nmake  
-
-## Linuxでのビルド
-$ mkdir build  
-$ cd build  
-$ cmake ..  
-$ make  
+を実行後  
+| 環境・基板 | コマンド |
+| --- | --- |
+| Linux・Pico | `cmake .. -DPICO_BOARD=pico` |
+| Linux・Zero | `cmake .. -DPICO_BOARD=waveshare_rp2040_zero` |
+| Windows・Pico | `cmake .. -G "NMake Makefiles" -DPICO_BOARD=pico` |
+| Windows・Zero | `cmake .. -G "NMake Makefiles" -DPICO_BOARD=waveshare_rp2040_zero` |
 
 ## 注意
-モノラル出力です。  
-MIDIの1～9,11～16チャンネルはBEEP音で再生します。  
-10チャンネルはPSGっぽいノイズドラムを再生します。11種類しか入っていません。  
-同じ音階を2音以上再生すると波形を打ち消しあって音が小さくなる、または消えてしまう事があります。  
-C言語からテキトーに修正したのでクラスの変数をPublicアクセスしていたりしてプログラムが見づらいです。  
+音声出力はモノラル出力です。  
+PANには対応していません。  
 
