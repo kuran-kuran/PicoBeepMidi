@@ -6,11 +6,6 @@ GMモードとBEEPモードがあります。
 GMモードは音色がGM風になります。  
 BEEPモードは音色がBEEP音になります。ドラムはPSG風になります。  
 
-(https://github.com/kuran-kuran/PicoBeepMidi/blob/0b89364938ee0909366703f0e02b3eb66494f047/PicoMidi_1.jpg
-https://github.com/kuran-kuran/PicoBeepMidi/blob/0b89364938ee0909366703f0e02b3eb66494f047/PicoMidi_2.jpg
-)
-
-
 ## 端子
 GPIO0 : UART TX  
 GPIO1 : UART RX  
