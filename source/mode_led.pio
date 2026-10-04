@@ -1,0 +1,10 @@
+.program mode_led
+.side_set 1
+.wrap_target
+bitloop:
+    out x, 1       side 0 [3]
+    jmp !x, do_zero side 1 [2]
+    jmp bitloop    side 1 [2]
+do_zero:
+    nop            side 0 [2]
+.wrap

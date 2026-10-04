@@ -1,307 +1,235 @@
-#include <stdio.h>
-#include <stdint.h>
-#include <stdbool.h>
+#include "BoardConfig.h"
 #include "pico/stdlib.h"
-#include "pico/stdio_uart.h"
 #include "pico/multicore.h"
-#include "tusb_config.h"
-#include "tusb.h"
+#include "pico/util/queue.h"
+#include "hardware/clocks.h"
+#include "hardware/vreg.h"
+#include "hardware/dma.h"
 #include "hardware/pwm.h"
-#include "ringbuffer.h"
-#include "SquareWave.hpp"
-#include "SinWave.hpp"
-#include "NoiseDrum.hpp"
-#include <cstdio>
+#include "tusb.h"
+#include "Synth.h"
+#include "BoardControls.h"
+#include "ModeButton.h"
+#include "AudioBuffers.h"
+#include "ModeStorage.h"
+#include <atomic>
 
-// GPIO-00 UART-0 TX
-// GPIO-01 UART-0 RX
-// GPIO-06 Audio out
+#define MIDI_UART_RX_PIN 1
+#define MIDI_UART_TX_PIN 0
 
-static const int PWM_PIN = 6;
-static const int PSG_DEVIDE_FACTOR = 9;
-static const int CHANNEL_COUNT = 32;
-static const int NOISE_DRUM_COUNT = 11;
-constexpr double CLOCK_FREQ = 125000000.0;
+static_assert(MODE_LED_PIN != MIDI_UART_RX_PIN && MODE_LED_PIN != MIDI_UART_TX_PIN, "LED overlaps MIDI UART");
 
-// リズムノート変換テーブル
-static const uint8_t Note35_57ChangeTable[] =
-{
-	0 , 0, 5, 1, 255, 6, 2, 7,
-	4, 255, 2, 8, 3, 3, 9, 4,
-	10, 255, 255, 255, 255, 255, 9
+namespace {
+queue_t messages;
+queue_t diagnostics;
+std::atomic<bool> diagnostics_requested{false};
+struct Diagnostics { uint32_t values[14]; };
+std::atomic<uint32_t> panic_epoch{0};
+// Debugger-visible diagnostics; one writer (audio core) per field.
+volatile uint32_t audio_underruns = 0;
+volatile uint32_t max_render_us = 0;
+volatile uint32_t event_overflows = 0;
+uint32_t uart_errors = 0;
+constexpr uint32_t block_size = 128;
+
+struct AudioDma {
+    uint channel;
+    bool busy() const { return dma_channel_is_busy(channel); }
+    void idle() const { tight_loop_contents(); }
+    void start(const uint32_t* samples, unsigned count) const
+    {
+        hard_assert(!busy());
+        dma_channel_set_read_addr(channel,samples,false);
+        dma_channel_set_trans_count(channel,count,true);
+    }
 };
 
-uint16_t masterVolume;
-uint8_t midiChannelVolume[16] = {
-	254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254
+void panic()
+{
+    panic_epoch.store(panic_epoch.load(std::memory_order_relaxed)+1,std::memory_order_release);
+}
+
+class Receiver : public MidiSink {
+    void receive(const MidiMessage& message) override
+    {
+        if(message.status == 0xf0 && message.size == 4 &&
+           message.data[0] == 0x7d && message.data[1] == 0x47 &&
+           message.data[2] == 0x4d && message.data[3] == 1) {
+            diagnostics_requested.store(true,std::memory_order_release);
+            return;
+        }
+        if(!queue_try_add(&messages,&message)) { ++event_overflows; panic(); }
+    }
 };
-uint8_t midiChannelExpression[16] = {
-	254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254, 254
-};
-SquareWave squareWave[CHANNEL_COUNT];
+Receiver receiver;
+MidiParser usb_parser(receiver), uart_parser(receiver);
 
-NoiseDrum noiseDrum[NOISE_DRUM_COUNT];
-
-repeating_timer timer;
-volatile bool callbackBusy = false;
-
-void setup_pwm()
+uint32_t gcd(uint32_t a, uint32_t b)
 {
-	gpio_set_function(PWM_PIN, GPIO_FUNC_PWM);
-	uint slice = pwm_gpio_to_slice_num(PWM_PIN);
-	pwm_set_wrap(slice, 255); // 8bit resolution
-	pwm_set_clkdiv(slice, CLOCK_FREQ / (SquareWave::OUTPUT_SAMPLING_FREQUENCY * 256.0));
-	pwm_set_enabled(slice, true);
+    while(b) { uint32_t t = a%b; a = b; b = t; }
+    return a;
 }
 
-// タイマ割り込み処理
-bool timerCallback(repeating_timer *t)
+void audio_core()
 {
-	if(callbackBusy == true)
-	{
-		return true;
-	}
-	callbackBusy = true;
-	// Mixer
-	uint16_t mix_volume = 0;
-	for(int i = 0; i < CHANNEL_COUNT; i ++)
-	{
-		int channel = squareWave[i].GetChannel();
-		mix_volume += squareWave[i].GetData(static_cast<int32_t>(midiChannelVolume[channel] * midiChannelExpression[channel] >> 8));
-	}
-	for(int i = 0; i < NOISE_DRUM_COUNT; ++ i)
-	{
-		mix_volume += noiseDrum[i].GetData();
-	}
-	masterVolume = mix_volume / PSG_DEVIDE_FACTOR;
-	if(masterVolume > 255)
-	{
-		masterVolume = 255;
-	}
-	pwm_set_gpio_level(PWM_PIN, masterVolume);
-	callbackBusy = false;
-	return true;
+    static Synth synth;
+    board_controls_init();
+    uint8_t saved_mode = mode_storage_load();
+    synth.set_mode(saved_mode == 2 ? Synth::Mode::beep : Synth::Mode::gm);
+    board_mode_led(saved_mode == 2);
+    uint32_t mode_changed_at = 0, save_attempt_at = 0;
+    ModeButton mode_button;
+    uint32_t last_button = 0;
+    gpio_set_function(AUDIO_PWM_PIN,GPIO_FUNC_PWM);
+    const uint slice = pwm_gpio_to_slice_num(AUDIO_PWM_PIN);
+    const uint shift = pwm_gpio_to_channel(AUDIO_PWM_PIN)*16;
+    pwm_config pwm = pwm_get_default_config();
+    // Preserve the 125 MHz build's PWM carrier when testing a faster CPU.
+    pwm_config_set_clkdiv(&pwm,static_cast<float>(clock_get_hz(clk_sys))/125000000.0f);
+    pwm_config_set_wrap(&pwm,255);
+    pwm_init(slice,&pwm,true);
+    pwm_set_gpio_level(AUDIO_PWM_PIN,128);
+    const int timer = dma_claim_unused_timer(true);
+    const uint32_t clock = clock_get_hz(clk_sys), divisor = gcd(clock,Synth::sample_rate);
+    // Default 125 MHz gives 6/15625: exact 48 kHz pacing, independent of PWM carrier.
+    hard_assert(clock/divisor <= 65535 && Synth::sample_rate/divisor <= 65535);
+    dma_timer_set_fraction(static_cast<uint>(timer),static_cast<uint16_t>(Synth::sample_rate/divisor),static_cast<uint16_t>(clock/divisor));
+    const uint dma_channel = static_cast<uint>(dma_claim_unused_channel(true));
+    dma_channel_config c = dma_channel_get_default_config(dma_channel);
+    channel_config_set_transfer_data_size(&c,DMA_SIZE_32);
+    channel_config_set_read_increment(&c,true);
+    channel_config_set_write_increment(&c,false);
+    channel_config_set_dreq(&c,dma_get_timer_dreq(static_cast<uint>(timer)));
+    channel_config_set_chain_to(&c,dma_channel); // Self means no chaining.
+    dma_channel_configure(dma_channel,&c,&pwm_hw->slice[slice].cc,nullptr,0,false);
+    AudioDma transfer{dma_channel};
+    // Static storage: keep these 1 KiB buffers off core 1's small stack.
+    static AudioBuffers<AudioDma,block_size> audio(transfer);
+    static int16_t pcm[block_size];
+    audio.start(128u<<shift);
+    uint32_t seen_panic = 0;
+    while(true) {
+        const uint32_t started = time_us_32();
+        if(static_cast<uint32_t>(started-last_button) >= 10000) {
+            last_button = started;
+            bool down = false;
+            const bool valid = board_bootsel_read(down);
+            const auto action = valid ? mode_button.update(down,time_us_32()) : ModeButton::Action::none;
+            if(!valid) mode_button = ModeButton{}; // Require release after a missed reading.
+            if(action == ModeButton::Action::toggle_mode) {
+                synth.set_mode(synth.mode() == Synth::Mode::gm ? Synth::Mode::beep : Synth::Mode::gm);
+                board_mode_led(synth.mode() == Synth::Mode::beep);
+                mode_changed_at = time_us_32();
+            }
+            if(action == ModeButton::Action::reset) synth.reset();
+        }
+        const uint32_t epoch = panic_epoch.load(std::memory_order_acquire);
+        MidiMessage m;
+        if(epoch != seen_panic) {
+            while(queue_try_remove(&messages,&m)) {}
+            synth.all_sound_off(); seen_panic = epoch;
+        }
+        // Bound control work so a USB flood cannot starve rendering indefinitely.
+        for(unsigned n = 0; n < 32 && queue_try_remove(&messages,&m); ++n) synth.receive(m);
+        const uint8_t current_mode = synth.mode() == Synth::Mode::beep ? 2 : 1;
+        const uint32_t now = time_us_32();
+        if(current_mode != saved_mode && now-mode_changed_at >= 2000000u &&
+           now-save_attempt_at >= 1000000u && synth.active_count() == 0 && queue_is_empty(&messages)) {
+            save_attempt_at = now;
+            // Finish queued audio before parking both CPUs for flash programming.
+            while(transfer.busy()) transfer.idle();
+            pwm_set_gpio_level(AUDIO_PWM_PIN,128);
+            if(mode_storage_save(current_mode)) saved_mode = current_mode;
+            audio.start(128u<<shift);
+            continue;
+        }
+        uint32_t* const buffer = audio.writable();
+        synth.render_block(pcm,block_size);
+        for(unsigned n = 0; n < block_size; ++n) {
+            const int32_t sample = pcm[n];
+            buffer[n] = static_cast<uint32_t>((sample+32768)>>8)<<shift;
+        }
+        const uint32_t elapsed = time_us_32()-started;
+        if(elapsed > max_render_us) max_render_us = elapsed;
+        if(audio.submit()) ++audio_underruns;
+        if(diagnostics_requested.load(std::memory_order_acquire)) {
+            diagnostics_requested.store(false,std::memory_order_release);
+            const Diagnostics d{{5,audio_underruns,max_render_us,0,
+                synth.note_ons,synth.note_offs,synth.unmatched_offs,
+                synth.active_count(),synth.held_count(),synth.voice_steals,
+                board_button_timeouts,board_max_button_us,0,0}};
+            queue_try_add(&diagnostics,&d);
+        }
+    }
 }
+} // namespace
 
-void setup_timer()
-{
-	add_repeating_timer_us(-1000000 / SquareWave::OUTPUT_SAMPLING_FREQUENCY, timerCallback, NULL, &timer);
-}
-
-// Core1の処理
-void core1_entry()
-{
-	uint8_t rxData;
-	uint8_t midicc1;
-	uint8_t midicc2;
-	uint8_t midinote;
-	uint8_t midivel;
-	uint8_t override;
-	setup_pwm();
-	setup_timer();
-	while(true)
-	{
-		if(rb_count() < 1)
-		{
-			tight_loop_contents();
-		}
-		if(!rb_pop(&rxData))
-		{
-			tight_loop_contents();
-			continue;
-		}
-		// データを受信した
-		// Listen USART
-		uint8_t midicmd = rxData;
-		uint8_t midich = midicmd & 0xF;
-		switch(midicmd & 0xF0)
-		{
-		case 0x80: // Note off
-			while(rb_count() < 2)
-			{
-				tight_loop_contents();
-			}
-			rb_pop(&midinote);
-			rb_pop(&midivel);
-//			printf("midicmd: (%d) %02X %02X %02X\n", midich, midicmd, midinote, midivel);
-			for(int i = 0; i < CHANNEL_COUNT; ++ i)
-			{
-				if(squareWave[i].IsInUse() && (squareWave[i].GetChannel() == midich) && (squareWave[i].GetNote() == midinote))
-				{
-					squareWave[i].NoteOff();
-				}
-			}
-			break;
-		case 0x90: // Note on
-			while(rb_count() < 2)
-			{
-				tight_loop_contents();
-			}
-			rb_pop(&midinote);
-			rb_pop(&midivel);
-//			printf("midicmd: (%d) %02X %02X %02X v(%d)\n", midich, midicmd, midinote, midivel, midiChannelVolume[midich]);
-			if(midich != 9)
-			{
-				if(midivel != 0)
-				{
-					// check note is already on
-					override = 0;
-					for(int i = 0; i < CHANNEL_COUNT; ++ i)
-					{
-						if(squareWave[i].IsInUse() && (squareWave[i].GetChannel() == midich) && (squareWave[i].GetNote() == midinote))
-						{
-							override = 1;
-						}
-					}
-					if(override == 0)
-					{
-						for(int i = 0; i < CHANNEL_COUNT; ++ i)
-						{
-							if(!squareWave[i].IsInUse())
-							{
-								squareWave[i].NoteOn(midinote, midivel << 1);
-								squareWave[i].SetChannel(midich);
-								break;
-							}
-						}
-					}
-				}
-				else
-				{
-					for(int i = 0; i < CHANNEL_COUNT; ++ i)
-					{
-						if(squareWave[i].IsInUse() && (squareWave[i].GetChannel() == midich) && (squareWave[i].GetNote() == midinote))
-						{
-							squareWave[i].NoteOff();
-						}
-					}
-				}
-			}
-			else
-			{
-				if((35 <= midinote) && (midinote <= 57))
-				{
-					uint8_t rythmNote = Note35_57ChangeTable[midinote - 35];
-					if(rythmNote < 11)
-					{
-						noiseDrum[rythmNote].SetPlay(rythmNote, midivel >> 3);
-					}
-				}
-			}
-			break;
-		case 0xB0:
-			// Channel control
-			while(rb_count() < 1)
-			{
-				tight_loop_contents();
-			}
-			rb_pop(&midicc1);
-//			printf("midicmd: (%d) %02X %02X\n", midich, midicmd, midicc1);
-			switch(midicc1)
-			{
-			case 7:  // Volume
-			case 11: // Expression
-				while(rb_count() < 1)
-				{
-					tight_loop_contents();
-				}
-				rb_pop(&midicc2);
-//				printf("*midicmd: (%d) %02X %02X %02X\n", midich, midicmd, midicc1, midicc2);
-				if(midicc1 == 7)
-				{
-					midiChannelVolume[midich] = midicc2 << 1; // (0～254)
-				}
-				else
-				{
-					midiChannelExpression[midich] = midicc2 << 1; // (0～254)
-				}
-				if(midich == 9)
-				{
-					for(int i = 0; i < NOISE_DRUM_COUNT; ++ i)
-					{
-						uint8_t setVolume = static_cast<uint8_t>((midiChannelVolume[midich] * midiChannelExpression[midich]) >> 12);
-						noiseDrum[i].SetVolume(setVolume);
-					}
-				}
-				break;
-			case 0: //Bank select
-			case 120:// All note off
-			case 121:// All reset
-			case 123:
-			case 124:
-			case 125:
-			case 126:
-			case 127:
-				for(int i = 0; i < CHANNEL_COUNT; ++ i)
-				{
-					if(squareWave[i].IsInUse() && (squareWave[i].GetChannel() == midich))
-					{
-						squareWave[i].NoteOff();
-					}
-				}
-				break;
-			default:
-				break;
-			}
-			break;
-		case 0xC0:
-			// Program change
-//			printf("Program change: (%d) %02X\n", midich, midicc2);
-			for(int i = 0; i < CHANNEL_COUNT; ++ i)
-			{
-				if(squareWave[i].IsInUse() && (squareWave[i].GetChannel() == midich))
-				{
-					squareWave[i].NoteOff();
-				}
-			}
-			break;
-		default: // Skip
-			break;
-		}
-		tight_loop_contents();
-	}
-}
-
-// Core0の処理
 int main()
 {
-	stdio_init_all();
-	stdio_uart_init();
-
-	// core1設定
-	multicore_launch_core1(core1_entry);
-
-	// UART初期化
-	uart_init(uart0, 31250); // MIDI: 31250, PC:38400
-	gpio_set_function(12, GPIO_FUNC_UART);  // TX = GP12
-	gpio_set_function(13, GPIO_FUNC_UART);  // RX = GP13
-
-//	printf("PicoMidi start.\n");
-
-	// USBスタック初期化
-	tusb_init();
-	uint8_t buffer[64];
-	int phase = 0;
-	while(true)
-	{
-		// USBイベント処理
-		tud_task();
-		// USB MIDI受信
-		if(tud_midi_available())
-		{
-			uint32_t count = tud_midi_stream_read(buffer, sizeof(buffer));
-			for(uint32_t i = 0; i < count; ++ i)
-			{
-				rb_push(buffer[i]);
-			}
-		}
-		// UART受信
-		while(uart_is_readable(uart0))
-		{
-			uint8_t rxData = uart_getc(uart0);
-			// FIFO内の全データをここで処理
-			rb_push(rxData);
-		}
-		tight_loop_contents();
-	}
+    // Set voltage/clock before UART, USB, PIO or the audio core are initialized.
+    vreg_set_voltage(VREG_VOLTAGE_1_20);
+    sleep_ms(10);
+    set_sys_clock_khz(250000,true);
+    queue_init(&messages,sizeof(MidiMessage),256);
+    queue_init(&diagnostics,sizeof(Diagnostics),1);
+    uart_init(uart0,31250);
+    gpio_set_function(MIDI_UART_RX_PIN,GPIO_FUNC_UART);
+    gpio_pull_up(MIDI_UART_RX_PIN); // Keep an unused UART idle during USB-only use.
+    gpio_set_function(MIDI_UART_TX_PIN,GPIO_FUNC_UART);
+    uart_set_format(uart0,8,1,UART_PARITY_NONE);
+    uart_set_fifo_enabled(uart0,true);
+    tusb_init();
+    multicore_launch_core1(audio_core);
+    bool was_mounted = false;
+    bool sensing[2] = {false,false};
+    uint32_t last_rx[2] = {0,0};
+    auto feed = [&](unsigned source, uint8_t byte) {
+        last_rx[source] = time_us_32();
+        if(byte == 0xfe) sensing[source] = true;
+        (source == 0 ? usb_parser : uart_parser).feed(byte);
+    };
+    while(true) {
+        board_controls_service();
+        tud_task();
+        static uint8_t reply[76];
+        static uint32_t reply_offset = 0, reply_size = 0;
+        Diagnostics d;
+        if(reply_offset == reply_size && queue_try_remove(&diagnostics,&d)) {
+            d.values[3] = event_overflows;
+            d.values[12] = uart_errors;
+            d.values[13] = panic_epoch.load(std::memory_order_relaxed);
+            reply[0] = 0xf0; reply[1] = 0x7d; reply[2] = 0x47; reply[3] = 0x4d; reply[4] = 2;
+            for(unsigned i = 0; i < 14; ++i)
+                for(unsigned j = 0; j < 5; ++j) reply[5+i*5+j] = (d.values[i]>>(7*j))&127;
+            reply[75] = 0xf7; reply_offset = 0; reply_size = sizeof(reply);
+        }
+        if(reply_offset < reply_size && tud_mounted())
+            reply_offset += tud_midi_stream_write(0,reply+reply_offset,reply_size-reply_offset);
+        const bool mounted = tud_mounted();
+        if(was_mounted && !mounted) { usb_parser.reset(); sensing[0] = false; panic(); }
+        was_mounted = mounted;
+        uint8_t packet[4];
+        static const uint8_t cin_size[16] = {0,0,2,3,3,1,2,3,3,3,3,3,2,2,3,1};
+        // Separate USB cable 0 and UART parser state prevents running-status corruption.
+        for(unsigned n = 0; n < 32 && tud_midi_packet_read(packet); ++n) {
+            if((packet[0]>>4) != 0) continue;
+            for(uint8_t i = 0; i < cin_size[packet[0]&15]; ++i) feed(0,packet[i+1]);
+        }
+        for(unsigned n = 0; n < 32 && uart_is_readable(uart0); ++n) {
+            const uint32_t data = uart_get_hw(uart0)->dr;
+            if(data & 0x0f00u) {
+                ++uart_errors;
+                // Framing/parity/break/overrun: never carry a damaged running status forward.
+                uart_get_hw(uart0)->rsr = 0;
+                uart_parser.reset(); panic();
+            } else feed(1,static_cast<uint8_t>(data));
+        }
+        for(unsigned source = 0; source < 2; ++source) {
+            if(sensing[source] && time_us_32()-last_rx[source] > 300000) {
+                sensing[source] = false;
+                (source == 0 ? usb_parser : uart_parser).reset(); panic();
+            }
+        }
+        tight_loop_contents();
+    }
 }
