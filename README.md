@@ -15,6 +15,7 @@ UARTでの接続の場合は5Vの電源が必要です
 <img src="https://github.com/kuran-kuran/PicoBeepMidi/blob/0b89364938ee0909366703f0e02b3eb66494f047/PicoMidi_1.jpg" alt="AudioOut + USB接続" width="50%">
 AudioOut + USB接続  
 <br>
+<br>
 <img src="https://github.com/kuran-kuran/PicoBeepMidi/blob/0b89364938ee0909366703f0e02b3eb66494f047/PicoMidi_2.jpg" alt="AudioOut + MIDI IN接続" width="50%">
 AudioOut + MIDI IN接続  
 
