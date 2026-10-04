@@ -12,6 +12,9 @@ GPIO1 : UART RX
 GPIO6 : Audio  
 UARTでの接続の場合は5Vの電源が必要です  
 
+![AudioOut + USB接続](https://github.com/kuran-kuran/PicoBeepMidi/blob/0b89364938ee0909366703f0e02b3eb66494f047/PicoMidi_1.jpg)
+![AudioOut + MIDI IN接続](https://github.com/kuran-kuran/PicoBeepMidi/blob/0b89364938ee0909366703f0e02b3eb66494f047/PicoMidi_2.jpg)
+
 ## 使い方
 Windowsの場合はUSBで接続するとMIDIとして認識します。USB接続の場合はVSYSピンの接続は必要ありません。  
 UARTで接続する場合は出力側のTXをGPIO 1(RX)に接続して電源5VをVSYSピンに入れてください。(RP2040Zeroは5Vピン)  
